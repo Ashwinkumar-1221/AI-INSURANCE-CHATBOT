@@ -9,3 +9,4 @@ python-jose[cryptography]
 groq
 pydantic
 email-validator
+twilio
