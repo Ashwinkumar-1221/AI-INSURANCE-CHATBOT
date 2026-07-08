@@ -19,12 +19,12 @@ app = FastAPI(
     title="AI Insurance API",
     version="1.0.0",
 )
-origins = [
-    "http://localhost:5173",
-    "https://ai-insurance-chatbot.vercel.app",
-]
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ai-insurance-chatbot.vercel.app",
+    ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
