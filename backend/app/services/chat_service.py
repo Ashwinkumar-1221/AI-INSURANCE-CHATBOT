@@ -56,7 +56,6 @@ class ChatService:
             payload["preferred_category"] = "HOME"
 
         policies = recommendation_service.get_recommendations(payload)
-        policies = recommendation_service.get_recommendations(payload)
 
         try:
             prompt = self._build_prompt(message, policies)
@@ -191,7 +190,23 @@ Response Length Rules:
 - Never generate paragraphs longer than 80 words unless the user explicitly asks for detailed information.
                         """,
                     },
-                    {"role": "user", "content": prompt},
+                   {
+    "role": "user",
+    "content": f"""
+Previous topic:
+{context}
+
+Current user message:
+{message}
+
+If the user replies with words like:
+yes, no, okay, continue, tell me more, compare, which one
+
+assume they are referring to the previous topic above.
+
+Continue the conversation naturally.
+"""
+},
                 ],
                 temperature=0.4,
                 max_tokens=400,
@@ -208,17 +223,29 @@ Response Length Rules:
             }
 
     def _build_prompt(self, message: str, policies: list[Policy]) -> str:
-        context = ""
-        if policies:
-            context = "\n".join(
-                [
-                    f"- {policy.policy_name} ({policy.category.value}): {policy.description or 'No description'}; provider: {policy.provider}; coverage: {policy.coverage_amount}; premium: {policy.premium}; tenure: {policy.tenure}"
-                    for policy in policies
-                ]
-            )
-            context = f"Recommended policies from the database:\n{context}"
+    context = ""
+    if policies:
+        context = "\n".join(
+            [
+                f"- {policy.policy_name} ({policy.category.value}): {policy.description or 'No description'}; provider: {policy.provider}; coverage: {policy.coverage_amount}; premium: {policy.premium}; tenure: {policy.tenure}"
+                for policy in policies
+            ]
+        )
 
-        return f"User message: {message}\n\n{context}\n\nAnswer as an AI Insurance Assistant."
+    return f"""
+Previous topic:
+{context}
+
+Current user message:
+{message}
+
+If the user's reply is short like:
+yes, no, okay, continue, tell me more, compare, which one
+
+assume they are referring to the previous topic.
+
+Continue the conversation naturally.
+"""
 
     def _policy_to_dict(self, policy: Policy) -> dict[str, Any]:
         return {
