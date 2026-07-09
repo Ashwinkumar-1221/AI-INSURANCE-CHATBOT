@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Any
+from collections import defaultdict
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -14,6 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+conversation_memory = defaultdict(list)
 
 
 class ChatService:
@@ -59,159 +61,36 @@ class ChatService:
 
         try:
             prompt = self._build_prompt(message, policies)
+            history = conversation_memory[conversation_id or "default"]
+
+            history.append({
+                "role": "user",
+                "content": prompt,
+            })
+
             client = Groq(api_key=GROQ_API_KEY)
+
             response = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
                     {
                         "role": "system",
-                        "content": """
-                           You are InsureAI, a professional AI Insurance Assistant.
-
-Your personality:
-- Friendly, calm, confident and natural.
-- Speak like a helpful human, not like a chatbot.
-- Never sound robotic or overly formal.
-- Keep conversations short unless the user asks for details.
-
-Rules:
-
-1. Greetings
-If the user says:
-- Hi
-- Hello
-- Hey
-- Good morning
-- Good afternoon
-- Good evening
-
-Reply naturally in one short sentence.
-
-Examples:
-"Hello! 👋"
-"Hi! How can I help you today?"
-"Good morning! How may I assist you?"
-
-Do NOT explain insurance after a greeting.
-
-2. Small Talk
-
-If the user asks:
-- How are you?
-- What's up?
-- Who are you?
-- Thank you
-- Bye
-
-Reply naturally in one or two short sentences.
-
-Examples:
-
-User: How are you?
-Assistant:
-"I'm doing well, thank you! How can I help you today?"
-
-User: Thanks
-Assistant:
-"You're welcome! Happy to help."
-
-User: Bye
-Assistant:
-"Goodbye! Have a wonderful day."
-
-3. Insurance Questions
-
-Only when the user asks about insurance:
-
-- Health Insurance
-- Life Insurance
-- Vehicle Insurance
-- Claims
-- Premiums
-- Coverage
-- Policies
-- Renewals
-
-Provide concise answers.
-
-Default length:
-2–4 short sentences.
-
-Use bullet points only when comparing multiple options.
-
-4. Recommendations
-
-When recommending insurance:
-
-- Explain why it suits the user.
-- Mention only the important benefits.
-- Avoid long paragraphs.
-
-5. Unknown Questions
-
-If the question is unrelated to insurance:
-
-Answer briefly and politely, then guide the conversation back.
-
-Example:
-
-"I'd be happy to help with insurance-related questions. Is there anything about policies or claims you'd like to know?"
-
-6. Language
-
-Always reply in the same language the user uses.
-
-If the user speaks:
-- English → English
-- Hindi → Hindi
-- Telugu → Telugu
-
-Never switch languages unless asked.
-
-7. Style
-
-Be conversational.
-
-Never write huge paragraphs.
-
-Avoid unnecessary disclaimers.
-
-Avoid repeating yourself.
-
-Sound like Alexa, ChatGPT Voice, or Gemini Live.
-
-Keep responses quick, natural, and pleasant.
-Response Length Rules:
-
-- Greetings: maximum 1 sentence.
-- Small talk: maximum 2 sentences.
-- Insurance answers: maximum 4 short sentences.
-- Comparisons: maximum 5 bullet points.
-- Never generate paragraphs longer than 80 words unless the user explicitly asks for detailed information.
-                        """,
+                        "content": """..."""
                     },
-                   {
-    "role": "user",
-    "content": f"""
-Previous topic:
-{context}
-
-Current user message:
-{message}
-
-If the user replies with words like:
-yes, no, okay, continue, tell me more, compare, which one
-
-assume they are referring to the previous topic above.
-
-Continue the conversation naturally.
-"""
-},
+                    *history,
                 ],
                 temperature=0.4,
                 max_tokens=400,
             )
             reply = response.choices[0].message.content.strip()
+
+            history.append({
+                "role": "assistant",
+                "content": reply,
+            })
+
+            if len(history) > 20:
+                history[:] = history[-20:]
             return {
                 "reply": reply,
                 "recommended_policies": [self._policy_to_dict(policy) for policy in policies],
@@ -223,28 +102,35 @@ Continue the conversation naturally.
             }
 
     def _build_prompt(self, message: str, policies: list[Policy]) -> str:
-    context = ""
-    if policies:
-        context = "\n".join(
-            [
-                f"- {policy.policy_name} ({policy.category.value}): {policy.description or 'No description'}; provider: {policy.provider}; coverage: {policy.coverage_amount}; premium: {policy.premium}; tenure: {policy.tenure}"
-                for policy in policies
-            ]
-        )
+        context = ""
 
-    return f"""
-Previous topic:
+        if policies:
+            context = "\n".join(
+                [
+                    f"- {policy.policy_name} ({policy.category.value}): {policy.description or 'No description'}; provider: {policy.provider}; coverage: {policy.coverage_amount}; premium: {policy.premium}; tenure: {policy.tenure}"
+                    for policy in policies
+                ]
+            )
+
+        return f"""
+Previous insurance recommendations:
 {context}
 
 Current user message:
 {message}
 
-If the user's reply is short like:
-yes, no, okay, continue, tell me more, compare, which one
+If the user's reply is:
+- yes
+- no
+- okay
+- continue
+- tell me more
+- compare
+- which one
 
-assume they are referring to the previous topic.
+Assume they are referring to the previous insurance topic.
 
-Continue the conversation naturally.
+Continue the conversation naturally without restarting it.
 """
 
     def _policy_to_dict(self, policy: Policy) -> dict[str, Any]:
